@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:latest
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-jobscout_ai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    networks:
+      - jobscout_network
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+    networks:
+      - jobscout_network
+
+  scraper:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LINKEDIN_USERNAME=${LINKEDIN_USERNAME}
+      - LINKEDIN_PASSWORD=${LINKEDIN_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-jobscout_ai}
+      - REDIS_URL=redis://redis:6379/0
+      - BASE_URL=${BASE_URL:-https://www.linkedin.com}
+      - LOGIN_URL=${LOGIN_URL:-/uas/login}
+      - FEED_URL=${FEED_URL:-/feed}
+      - JOB_SEARCH_URL=${JOB_SEARCH_URL:-/jobs/search/}
+      - HEADLESS=${HEADLESS:-True}
+      - LOG_FILE_PATH=${LOG_FILE_PATH:-/data/jobscout.log}
+      - SESSION_FILE_PATH=${SESSION_FILE_PATH:-/data/session.json}
+    volumes:
+      - scraper_data:/app/data
+    networks:
+      - jobscout_network
+
+volumes:
+  postgres_data:
+  scraper_data:
+  redis_data:
+
+networks:
+  jobscout_network:
+    driver: bridge
