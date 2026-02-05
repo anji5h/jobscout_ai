@@ -16,18 +16,13 @@ app.conf.update(
     accept_content=["json"],
     result_serializer="json",
     task_track_started=True,
-    task_time_limit=60,
-    task_soft_time_limit=90,
+    task_time_limit=600,
+    task_soft_time_limit=540,
 )
 
 app.conf.beat_schedule = {
     "scrape-linkedin-jobs-hourly": {
         "task": "app.tasks.scrape_linkedin_jobs_task",
-        "schedule": crontab(),
+        "schedule": 120,
     },
 }
-
-
-@app.task(bind=True)
-def debug_task(self):
-    logger.info(f"Debug task request: {self.request.id}")

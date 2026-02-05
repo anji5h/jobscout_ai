@@ -1,7 +1,7 @@
-from pathlib import Path
-from playwright.async_api import Page
+import os
+import re
 import logging
-import asyncio
+from playwright.async_api import Browser, BrowserContext
 
 logger = logging.getLogger(__name__)
 
@@ -11,73 +11,63 @@ class LinkedInAuthenticator:
         self,
         email: str,
         password: str,
-        session_file_path: str,
         login_url: str,
         feed_url: str,
+        context_args: dict,
+        session_file_path: str,
     ):
         self.email = email
         self.password = password
-        self.session_path = Path(session_file_path)
         self.login_url = login_url
         self.feed_url = feed_url
+        self.context_args = context_args
+        self.session_path = session_file_path
 
-    async def authenticate(self, page: Page) -> bool:
-        """Authenticate using saved session or fallback to login."""
-        try:
-            if await self._verify_session(page):
-                logger.info("Authenticated using existing session")
-                return True
-            success = await self._login(page)
-            if success:
-                await self._save_session(page)
-            return success
-        except Exception as e:
-            logger.error(f"Authentication failed: {e}")
-            return False
+    async def get_context(self, browser: Browser) -> BrowserContext:
+        if os.path.exists(self.session_path):
+            logger.info("Using existing LinkedIn session")
+            context = await browser.new_context(
+                storage_state=self.session_path, **self.context_args
+            )
+            page = await context.new_page()
+            await page.goto(self.feed_url, wait_until="load", timeout=120000)
+            if page.url.startswith(self.feed_url):
+                logger.info("Existing session is valid")
+                return context
+            else:
+                logger.warning("Existing session is invalid, performing login")
+                await context.close()
 
-    async def _login(self, page: Page) -> bool:
+        logger.info("No session found, performing LinkedIn login")
+        context = await browser.new_context(**self.context_args)
+
+        login_success = await self._login(context)
+        if not login_success:
+            await context.close()
+            raise RuntimeError("LinkedIn login failed")
+
+        await context.storage_state(path=self.session_path)
+        await context.close()
+        logger.info("Login successful, session saved")
+
+        return await browser.new_context(
+            storage_state=self.session_path, **self.context_args
+        )
+
+    async def _login(self, context: BrowserContext) -> bool:
         """Login using email and password."""
         try:
-            await page.goto(self.login_url, wait_until="load", timeout=10000)
-            await asyncio.sleep(1)
-
+            page = await context.new_page()
+            await page.goto(self.login_url, wait_until="load", timeout=120000)
             await page.fill("#username", self.email)
             await page.fill("#password", self.password)
             await page.press("#password", "Enter")
 
-            await page.wait_for_load_state("networkidle", timeout=10000)
-            await asyncio.sleep(2)
-
-            if "feed" in page.url.lower():
-                logger.info("Login successful")
-                return True
-            logger.error("Login failed")
-            return False
+            await page.wait_for_url(
+                re.compile(rf"^{self.feed_url}"), wait_until="load", timeout=120000
+            )
+            await context.storage_state(path=self.session_path)
+            return True
         except Exception as e:
             logger.error(f"Login attempt failed: {e}")
             return False
-
-    async def _verify_session(self, page: Page) -> bool:
-        """Verify if saved session is still valid."""
-        try:
-            if not self.session_path.exists():
-                return False
-
-            await page.goto(self.feed_url, wait_until="load", timeout=10000)
-            await asyncio.sleep(1)
-
-            if "login" in page.url.lower():
-                return False
-
-            return True
-        except Exception as e:
-            logger.error(f"Session verification failed: {e}")
-            return False
-
-    async def _save_session(self, page: Page):
-        """Save session state to file."""
-        try:
-            self.session_path.parent.mkdir(parents=True, exist_ok=True)
-            await page.context.storage_state(path=str(self.session_path))
-        except Exception as e:
-            logger.error(f"Failed to save session: {e}")

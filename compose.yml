@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-jobscout_ai}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     ports:
       - "5432:5432"
     healthcheck:
@@ -55,11 +55,10 @@ services:
       - LOGIN_URL=${LOGIN_URL:-/uas/login}
       - FEED_URL=${FEED_URL:-/feed}
       - JOB_SEARCH_URL=${JOB_SEARCH_URL:-/jobs/search/}
-      - HEADLESS=${HEADLESS:-True}
-      - LOG_FILE_PATH=${LOG_FILE_PATH:-/data/jobscout.log}
+      - USER_AGENT=${USER_AGENT:-Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36}
       - SESSION_FILE_PATH=${SESSION_FILE_PATH:-/data/session.json}
     volumes:
-      - scraper_data:/app/data
+      - scraper_data:/data
     networks:
       - jobscout_network
 

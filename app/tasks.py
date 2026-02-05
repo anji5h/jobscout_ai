@@ -1,31 +1,35 @@
 import asyncio
 import logging
+from playwright.async_api import async_playwright
+
 from app.celery_app import app
 from app.config import settings
 from database.session import DatabaseManager
 from datetime import datetime, timezone
-from linkedin.browser import BrowserManager
 from linkedin.scraper import LinkedInJobScraper
 from linkedin.auth import LinkedInAuthenticator
 
 logger = logging.getLogger(__name__)
 
-browser_manager = BrowserManager(
-    headless=settings.headless, storage_state_path=settings.session_file_path
-)
+CONTEXT_ARGS = {
+    "user_agent": settings.user_agent,
+    "viewport": {"width": 1280, "height": 800},
+}
+
 authenticator = LinkedInAuthenticator(
     email=settings.linkedin_username,
     password=settings.linkedin_password,
-    session_file_path=settings.session_file_path,
     login_url=settings.lki_login_url,
     feed_url=settings.lki_feed_url,
+    context_args=CONTEXT_ARGS,
+    session_file_path=settings.session_file_path,
 )
+
 scraper = LinkedInJobScraper(
     jobs_search_url=settings.lki_job_search_url,
 )
 
 db_manager = DatabaseManager(database_url=settings.database_url)
-db_manager.init_db()
 
 
 @app.task(bind=True, max_retries=3)
@@ -37,9 +41,11 @@ def scrape_linkedin_jobs_task(self):
     try:
         logger.info(f"Starting job scraping task (attempt {self.request.retries + 1})")
 
-        jobs = asyncio.run(_async_scrape_and_persist())
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        jobs = loop.run_until_complete(_scrape_and_persist())
 
-        logger.info(f"Task completed successfully. Scraped and saved {len(jobs)} jobs.")
+        logger.info(f"Task completed successfully.")
         return {
             "status": "success",
             "jobs_processed": len(jobs),
@@ -50,22 +56,18 @@ def scrape_linkedin_jobs_task(self):
         raise self.retry(exc=exc, countdown=60 * (2**self.request.retries))
 
 
-async def _async_scrape_and_persist():
+async def _scrape_and_persist():
     """Async helper function for scraping and persisting jobs."""
-
     try:
-        page = await browser_manager.new_page()
-        auth_success = await authenticator.authenticate(page)
-
-        if not auth_success:
-            logger.error("Authentication failed, aborting task")
-            return []
-
-        jobs = await scraper.scrape_jobs(page)
-        db_manager.save_jobs(jobs)
-        return jobs
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(headless=True)
+            context = await authenticator.get_context(browser)
+            page = await context.new_page()
+            jobs = await scraper.scrape_jobs(page)
+            db_manager.save_jobs(jobs)
+            await context.close()
+            await browser.close()
+            return jobs
     except Exception as e:
         logger.error(f"Error during scraping and persistence: {e}")
         raise
-    finally:
-        await browser_manager.close()

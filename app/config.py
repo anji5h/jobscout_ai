@@ -16,11 +16,13 @@ class Settings(BaseSettings):
     feed_url: str = Field("/feed", env="FEED_URL")
     job_search_url: str = Field("/jobs/search/?", env="JOB_SEARCH_URL")
     job_search_params: str = Field(
-        "geoId=102974008&keywords=junior%20software%20engineer&refresh=true",
+        "geoId=102974008&keywords=junior software engineer&refresh=true",
         env="JOB_SEARCH_PARAMS",
     )
-    headless: bool = Field(True, env="HEADLESS")
-    log_file_path: str = Field("/data/jobscout.log", env="LOG_FILE_PATH")
+    user_agent: str = Field(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        env="USER_AGENT",
+    )
     session_file_path: str = Field("/data/session.json", env="SESSION_FILE_PATH")
 
     class Config:

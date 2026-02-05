@@ -1,7 +1,5 @@
 import logging
-import asyncio
 from typing import List
-from datetime import datetime, timezone
 
 from playwright.async_api import Page
 from bs4 import BeautifulSoup
@@ -19,15 +17,10 @@ class LinkedInJobScraper:
         jobs: List[Job] = []
 
         try:
-            await page.goto(self.jobs_url, wait_until="networkidle", timeout=30000)
+            await page.goto(self.jobs_url, wait_until="load", timeout=120000)
+            await page.wait_for_timeout(2000)
 
-            await page.wait_for_selector(
-                "li.scaffold-layout__list-item[data-occludable-job-id]"
-            )
-
-            job_list = await page.query_selector_all(
-                "li.scaffold-layout__list-item[data-occludable-job-id]"
-            )
+            job_list = await page.locator("li.scaffold-layout__list-item").all()
 
             logger.info(f"Found {len(job_list)} jobs on the page")
 
@@ -38,13 +31,13 @@ class LinkedInJobScraper:
                         continue
 
                     await job.click()
-                    await page.wait_for_selector(
-                        "article.jobs-description__container",
-                        timeout=15000,
-                    )
-                    await asyncio.sleep(1)
+                    await page.wait_for_timeout(2000)
 
-                    soup = BeautifulSoup(await page.content(), "html.parser")
+                    job_details_html = await page.locator(
+                        "div.jobs-search__job-details"
+                    ).inner_html(timeout=120000)
+                    soup = BeautifulSoup(job_details_html, "html.parser")
+
                     job_el = soup.select_one(
                         "div.job-details-jobs-unified-top-card__job-title a"
                     )
@@ -78,12 +71,15 @@ class LinkedInJobScraper:
                         separator="\n", strip=True
                     )
 
-                    insights_el = soup.select_one(
+                    insights_el = soup.select(
                         "div.job-details-fit-level-preferences button"
                     )
-                    location_type = (
-                        insights_el.get_text(strip=True) if insights_el else None
-                    )
+                    location_type = "unknown"
+                    for el in insights_el:
+                        text = el.get_text(strip=True).lower()
+                        if "on-site" in text or "remote" in text or "hybrid" in text:
+                            location_type = text
+                            break
 
                     meta_el = soup.select(
                         ".job-details-jobs-unified-top-card__tertiary-description-container span.tvm__text"
@@ -99,7 +95,7 @@ class LinkedInJobScraper:
 
                     jobs.append(
                         Job(
-                            job_id=int(job_id),
+                            id=job_id,
                             title=job_title,
                             company=company,
                             company_website=company_website,

@@ -8,9 +8,9 @@ Base = declarative_base()
 class Job(Base):
     __tablename__ = "jobs"
 
-    id = Column(Integer, primary_key=True)
-    title = Column(String(255), nullable=False)
-    company = Column(String(255), nullable=False)
+    id = Column(String(15), primary_key=True)
+    title = Column(String(100), nullable=False)
+    company = Column(String(100), nullable=False)
     company_website = Column(String(255), nullable=True)
     location = Column(String(255), nullable=False)
     location_type = Column(String(255), nullable=True)
