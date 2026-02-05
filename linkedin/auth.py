@@ -35,7 +35,7 @@ class LinkedInAuthenticator:
                 logger.info("Existing session is valid")
                 return context
             else:
-                logger.warning("Existing session is invalid, performing login")
+                logger.warning("Existing session is invalid")
                 await context.close()
 
         logger.info("No session found, performing LinkedIn login")

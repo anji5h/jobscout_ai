@@ -23,6 +23,6 @@ app.conf.update(
 app.conf.beat_schedule = {
     "scrape-linkedin-jobs-hourly": {
         "task": "app.tasks.scrape_linkedin_jobs_task",
-        "schedule": 120,
+        "schedule": crontab(minute=0, hour="*/3"),  # Every 3 hours
     },
 }

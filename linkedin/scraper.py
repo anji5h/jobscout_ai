@@ -26,7 +26,9 @@ class LinkedInJobScraper:
 
             for job in job_list:
                 try:
-                    job_id = await job.get_attribute("data-occludable-job-id")
+                    job_id = await job.get_attribute(
+                        "data-occludable-job-id", timeout=120000
+                    )
                     if not job_id:
                         continue
 
