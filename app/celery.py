@@ -16,8 +16,8 @@ app.conf.update(
     accept_content=["json"],
     result_serializer="json",
     task_track_started=True,
-    task_time_limit=600,
-    task_soft_time_limit=540,
+    task_time_limit=1800,
+    task_soft_time_limit=1500,
 )
 
 
@@ -29,6 +29,6 @@ def trigger_startup_tasks(sender, **kwargs):
 app.conf.beat_schedule = {
     "scrape-linkedin-jobs-hourly": {
         "task": "app.tasks.scrape_linkedin_jobs_task",
-        "schedule": crontab(minute=0, hour="*/1"),  # Every 1 hour
+        "schedule": crontab(minute="0", hour="8,14,20"),
     },
 }
