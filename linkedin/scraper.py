@@ -1,7 +1,7 @@
 import logging
-from typing import List
+from typing import List, Optional
 
-from playwright.async_api import Page
+from playwright.async_api import Page, Locator, TimeoutError as PlaywrightTimeoutError
 from bs4 import BeautifulSoup
 
 from database.models import Job
@@ -14,108 +14,127 @@ class LinkedInJobScraper:
         self.jobs_url = jobs_search_url
 
     async def scrape_jobs(self, page: Page) -> List[Job]:
-        jobs: List[Job] = []
+        """
+        Scrape LinkedIn job listings from the provided search URL.
 
+        Args:
+            page: Playwright Page instance
+            max_jobs: Maximum number of jobs to scrape (helps with rate limiting / timeouts)
+
+        Returns:
+            List of Job model instances
+        """
+        jobs = []
         try:
-            await page.goto(self.jobs_url, wait_until="load", timeout=120000)
-            await page.wait_for_timeout(2000)
+            await page.goto(self.jobs_url, wait_until="domcontentloaded", timeout=90000)
+            await page.wait_for_selector(
+                "li.scaffold-layout__list-item", state="attached", timeout=90000
+            )
+            job_elements = await page.locator("li.scaffold-layout__list-item").all()
+            logger.info(f"Found {len(job_elements)} job cards on the page")
 
-            job_list = await page.locator("li.scaffold-layout__list-item").all()
-
-            logger.info(f"Found {len(job_list)} jobs on the page")
-
-            for job in job_list:
+            for job_li in job_elements:
                 try:
-                    job_id = await job.get_attribute(
-                        "data-occludable-job-id", timeout=120000
-                    )
-                    if not job_id:
-                        continue
+                    job_card = await self._extract_job_card_data(page, job_li)
+                    if job_card:
+                        jobs.append(job_card)
 
-                    await job.click()
-                    await page.wait_for_timeout(2000)
-
-                    job_details_html = await page.locator(
-                        "div.jobs-search__job-details"
-                    ).inner_html(timeout=120000)
-                    soup = BeautifulSoup(job_details_html, "html.parser")
-
-                    job_el = soup.select_one(
-                        "div.job-details-jobs-unified-top-card__job-title a"
-                    )
-                    if not job_el:
-                        logger.warning(
-                            f"Job title element not found for job ID {job_id}"
-                        )
-                        continue
-                    job_title = job_el.get_text(strip=True)
-                    job_url = job_el.get("href")
-
-                    company_el = soup.select_one(
-                        "div.job-details-jobs-unified-top-card__company-name a"
-                    )
-                    if not company_el:
-                        logger.warning(f"Company element not found for job ID {job_id}")
-                        continue
-                    company = company_el.get_text(strip=True)
-                    company_website = company_el.get("href")
-
-                    description_el = soup.select_one(
-                        "article.jobs-description__container"
-                    )
-                    if not description_el:
-                        logger.warning(
-                            f"Description element not found for job ID {job_id}"
-                        )
-                        continue
-
-                    job_description = description_el.get_text(
-                        separator="\n", strip=True
-                    )
-
-                    insights_el = soup.select(
-                        "div.job-details-fit-level-preferences button"
-                    )
-                    location_type = "unknown"
-                    for el in insights_el:
-                        text = el.get_text(strip=True).lower()
-                        if "on-site" in text or "remote" in text or "hybrid" in text:
-                            location_type = text
-                            break
-
-                    meta_el = soup.select(
-                        ".job-details-jobs-unified-top-card__tertiary-description-container span.tvm__text"
-                    )
-
-                    if len(meta_el) == 0:
-                        logger.warning(f"Meta elements not found for job ID {job_id}")
-                        continue
-                    job_location = meta_el[0].get_text(strip=True)
-                    posted_date = (
-                        meta_el[2].get_text(strip=True) if len(meta_el) > 2 else None
-                    )
-
-                    jobs.append(
-                        Job(
-                            id=job_id,
-                            title=job_title,
-                            company=company,
-                            company_website=company_website,
-                            location=job_location,
-                            location_type=location_type,
-                            job_url=job_url,
-                            description=job_description,
-                            posted_date=posted_date,
-                        )
-                    )
-
-                except Exception as job_err:
-                    logger.warning(f"Failed to scrape job with ID {job_id}: {job_err}")
+                except Exception as e:
+                    logger.warning(f"Failed to process a job: {e}", exc_info=False)
                     continue
-
             logger.info(f"Successfully scraped {len(jobs)} jobs")
             return jobs
-
         except Exception as e:
-            logger.error(f"Error during job scraping: {e}")
+            logger.error(f"Critical error during LinkedIn scraping: {e}", exc_info=True)
             return jobs
+
+    async def _extract_job_card_data(
+        self, page: Page, job_li: Locator
+    ) -> Optional[Job]:
+        """Extract data from one job card and detail pane"""
+        try:
+            job_id = await job_li.get_attribute("data-occludable-job-id")
+            if not job_id:
+                return None
+
+            await job_li.click(timeout=90000)
+
+            await page.wait_for_selector(
+                "div.jobs-search__job-details article.jobs-description__container",
+                timeout=90000,
+                state="attached",
+            )
+
+            details_html = await page.locator(
+                "div.jobs-search__job-details"
+            ).inner_html()
+            soup = BeautifulSoup(details_html, "html.parser")
+
+            # Title & URL
+            title_a = soup.select_one(
+                "div.job-details-jobs-unified-top-card__job-title a"
+            )
+            if not title_a:
+                return None
+
+            title = title_a.get_text(strip=True)
+            job_url = title_a.get("href", "")
+
+            # Company
+            company_a = soup.select_one(
+                "div.job-details-jobs-unified-top-card__company-name a"
+            )
+            if not company_a:
+                return None
+
+            company = company_a.get_text(strip=True)
+            company_url = company_a.get("href", "")
+
+            # Description
+            desc_container = soup.select_one("article.jobs-description__container")
+            description = (
+                desc_container.get_text(separator="\n", strip=True)
+                if desc_container
+                else ""
+            )
+
+            # Location type (on-site / hybrid / remote / internship)
+            location_type = "unknown"
+            for btn in soup.select("div.job-details-fit-level-preferences button"):
+                text = btn.get_text(strip=True).lower()
+                if any(
+                    word in text
+                    for word in ["on-site", "remote", "hybrid", "internship"]
+                ):
+                    location_type = text
+                    break
+
+            # Location & posted date
+            meta_spans = soup.select(
+                ".job-details-jobs-unified-top-card__tertiary-description-container "
+                "span.tvm__text"
+            )
+
+            location = meta_spans[0].get_text(strip=True) if len(meta_spans) > 0 else ""
+            posted_date = (
+                meta_spans[2].get_text(strip=True) if len(meta_spans) > 2 else None
+            )
+
+            return Job(
+                id=job_id,
+                title=title,
+                company=company,
+                company_website=company_url,
+                location=location,
+                location_type=location_type,
+                job_url=job_url,
+                description=description,
+                posted_date=posted_date,
+            )
+
+        except PlaywrightTimeoutError as te:
+            logger.debug(f"Timeout while processing job: {te}")
+            return None
+        except Exception as e:
+            logger.warning(f"Unexpected error in job: {e}")
+            return None

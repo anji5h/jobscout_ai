@@ -17,6 +17,7 @@ class Job(Base):
     job_url = Column(Text, nullable=True)
     description = Column(Text, nullable=False)
     posted_date = Column(String(255), nullable=True)
+    match_score = Column(Integer, nullable=True)
     scraped_at = Column(DateTime, nullable=False, default=datetime.now(tz=timezone.utc))
 
     def __repr__(self):

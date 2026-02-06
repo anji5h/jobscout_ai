@@ -49,7 +49,7 @@ class DatabaseManager:
             logger.info("No jobs to save")
             return
 
-        logger.info(f"Saving {len(jobs)} jobs using {self.max_workers} threads")
+        logger.info(f"Saving {len(jobs)} jobs to the database")
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             futures = [executor.submit(self._insert_job, job) for job in jobs]

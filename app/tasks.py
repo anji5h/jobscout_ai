@@ -22,7 +22,7 @@ authenticator = LinkedInAuthenticator(
     login_url=settings.lki_login_url,
     feed_url=settings.lki_feed_url,
     context_args=CONTEXT_ARGS,
-    session_file_path=settings.session_file_path,
+    session_path=settings.session_file_path,
 )
 
 scraper = LinkedInJobScraper(
@@ -61,7 +61,7 @@ async def _scrape_and_persist():
     try:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
-            context = await authenticator.get_context(browser)
+            context = await authenticator.get_auth_context(browser)
             page = await context.new_page()
             jobs = await scraper.scrape_jobs(page)
             db_manager.save_jobs(jobs)
