@@ -2,7 +2,7 @@ import asyncio
 import logging
 from playwright.async_api import async_playwright
 
-from app.celery_app import app
+from app.celery import app
 from app.config import settings
 from database.session import DatabaseManager
 from datetime import datetime, timezone

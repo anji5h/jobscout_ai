@@ -20,6 +20,12 @@ app.conf.update(
     task_soft_time_limit=540,
 )
 
+
+@app.on_after_configure.connect
+def trigger_startup_tasks(sender, **kwargs):
+    sender.send_task("app.tasks.scrape_linkedin_jobs_task")
+
+
 app.conf.beat_schedule = {
     "scrape-linkedin-jobs-hourly": {
         "task": "app.tasks.scrape_linkedin_jobs_task",
