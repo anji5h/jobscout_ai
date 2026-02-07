@@ -25,5 +25,3 @@ RUN useradd -m appuser \
     && chown -R appuser:appuser /app /data /ms-playwright
 
 USER appuser
-
-CMD ["celery", "-A", "app.celery", "worker", "--beat", "--loglevel=info"]

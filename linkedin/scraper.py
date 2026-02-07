@@ -122,10 +122,10 @@ class LinkedInJobScraper:
 
             return Job(
                 id=job_id,
-                title=title,
-                company=company,
+                title=title.lower(),
+                company=company.lower(),
                 company_website=company_url,
-                location=location,
+                location=location.lower(),
                 location_type=location_type,
                 job_url=job_url,
                 description=description,

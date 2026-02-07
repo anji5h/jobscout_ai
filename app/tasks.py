@@ -1,35 +1,12 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from playwright.async_api import async_playwright
 
 from app.celery import app
-from app.config import settings
-from database.session import DatabaseManager
-from datetime import datetime, timezone
-from linkedin.scraper import LinkedInJobScraper
-from linkedin.auth import LinkedInAuthenticator
+from app.service import auth_provider, scraper, db_manager
 
 logger = logging.getLogger(__name__)
-
-CONTEXT_ARGS = {
-    "user_agent": settings.user_agent,
-    "viewport": {"width": 1280, "height": 800},
-}
-
-authenticator = LinkedInAuthenticator(
-    email=settings.linkedin_username,
-    password=settings.linkedin_password,
-    login_url=settings.lki_login_url,
-    feed_url=settings.lki_feed_url,
-    context_args=CONTEXT_ARGS,
-    session_path=settings.session_file_path,
-)
-
-scraper = LinkedInJobScraper(
-    jobs_search_url=settings.lki_job_search_url,
-)
-
-db_manager = DatabaseManager(database_url=settings.database_url)
 
 
 @app.task(bind=True, max_retries=3)
@@ -41,9 +18,7 @@ def scrape_linkedin_jobs_task(self):
     try:
         logger.info(f"Starting job scraping task (attempt {self.request.retries + 1})")
 
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        jobs = loop.run_until_complete(_scrape_and_persist())
+        jobs = asyncio.run(_scrape_and_persist())
 
         logger.info(f"Task completed successfully.")
         return {
@@ -61,7 +36,7 @@ async def _scrape_and_persist():
     try:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(headless=True)
-            context = await authenticator.get_auth_context(browser)
+            context = await auth_provider.get_auth_context(browser)
             page = await context.new_page()
             jobs = await scraper.scrape_jobs(page)
             db_manager.save_jobs(jobs)

@@ -1,11 +1,11 @@
 import logging
-from typing import List
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Tuple
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session, Query
 from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert
 
 from database.models import Base, Job
 
@@ -26,36 +26,74 @@ class DatabaseManager:
         )
         Base.metadata.create_all(bind=self.engine)
 
-    def _insert_job(self, job: Job) -> bool:
-        """Insert a single job (thread-safe)."""
+    def get_jobs(
+        self,
+        filter: list = None,
+        order_by: list = None,
+        limit: int = 25,
+        skip: int = 0,
+    ) -> Tuple[int, List[Job]]:
+        session: Session = self.SessionLocal()
         try:
-            session = self.SessionLocal()
-            session.add(job)
-            session.commit()
-            logger.info(f"Job saved: {job.title} at {job.company}")
-            return True
-        except IntegrityError as e:
-            logger.info("Job already exists, skipping...")
-            return True
+            query = session.query(Job)
+            if filter:
+                for condition in filter:
+                    query = query.filter(condition)
+            total_count = query.count()
+            if order_by:
+                for order in order_by:
+                    query = query.order_by(order)
+            query = query.offset(skip).limit(limit)
+            jobs = query.all()
+            logger.info(
+                f"Retrieved {len(jobs)} jobs from the database (total matching: {total_count})"
+            )
+            return total_count, jobs
         except Exception as e:
-            logger.error(f"Failed to save job {job.title} at {job.company}: {e}")
-            return False
+            logger.error(f"Error retrieving jobs: {e}")
+            return 0, []
         finally:
             session.close()
 
     def save_jobs(self, jobs: List[Job]) -> None:
-        """Save jobs concurrently using threads."""
+        """Insert or update a list of Job in the database."""
         if not jobs:
-            logger.info("No jobs to save")
+            logger.info("No jobs to save.")
             return
-
-        logger.info(f"Saving {len(jobs)} jobs to the database")
-
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = [executor.submit(self._insert_job, job) for job in jobs]
-
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    logger.error(f"Unhandled exception during job insert: {e}")
+        session = self.SessionLocal()
+        try:
+            values = [
+                {
+                    "id": job.id,
+                    "title": job.title,
+                    "company": job.company,
+                    "company_website": job.company_website,
+                    "location": job.location,
+                    "location_type": job.location_type,
+                    "job_url": job.job_url,
+                    "description": job.description,
+                    "posted_date": job.posted_date,
+                }
+                for job in jobs
+            ]
+            stmt = insert(Job).values(values)
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["id"],
+                set_={
+                    "title": stmt.excluded.title,
+                    "company": stmt.excluded.company,
+                    "company_website": stmt.excluded.company_website,
+                    "location": stmt.excluded.location,
+                    "location_type": stmt.excluded.location_type,
+                    "job_url": stmt.excluded.job_url,
+                    "description": stmt.excluded.description,
+                    "scraped_at": stmt.excluded.scraped_at,
+                },
+            )
+            session.execute(stmt)
+            session.commit()
+            logger.info(f"Saved {len(jobs)} jobs to the database.")
+        except Exception as e:
+            logger.error(f"Failed to save jobs: {e}")
+        finally:
+            session.close()

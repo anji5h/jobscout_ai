@@ -24,6 +24,7 @@ class Settings(BaseSettings):
         env="USER_AGENT",
     )
     session_file_path: str = Field("/data/session.json", env="SESSION_FILE_PATH")
+    cv_file_path: str = Field("/data/cv", env="CV_FILE_PATH")
 
     class Config:
         case_sensitive = False

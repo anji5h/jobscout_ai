@@ -17,14 +17,14 @@ class LinkedInAuthenticator:
         password: str,
         login_url: str,
         feed_url: str,
-        context_args: dict,
+        user_agent: str,
         session_path: str,
     ):
         self.email = email
         self.password = password
         self.login_url = login_url
         self.feed_url = feed_url
-        self.context_args = context_args
+        self.context_args = {"user_agent": user_agent}
         self.session_path = session_path
 
     async def get_auth_context(self, browser: Browser) -> BrowserContext:
