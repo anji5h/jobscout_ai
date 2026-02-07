@@ -15,8 +15,12 @@ COPY requirements.txt .
 
 RUN python -m venv $VIRTUAL_ENV \
     && pip install --upgrade pip \
-    && pip install -r requirements.txt \
-    && python -m playwright install chromium --with-deps --only-shell
+    && pip install -r requirements.txt
+
+# Install Playwright only if the environment variable PLAYWRIGHT_INSTALL is set
+RUN if [ "$PLAYWRIGHT_INSTALL" = "true" ]; then \
+        python -m playwright install chromium --with-deps --only-shell; \
+    fi
 
 COPY . .
 

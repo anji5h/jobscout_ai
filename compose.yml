@@ -43,6 +43,8 @@ services:
       redis:
         condition: service_healthy
     env_file: .env
+    environment:
+      - PLAYWRIGHT_INSTALL=true
     volumes:
       - scraper_data:/data
     networks:
