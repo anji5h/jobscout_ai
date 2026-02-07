@@ -26,6 +26,10 @@ COPY . .
 
 RUN useradd -m appuser \
     && mkdir -p /data \
-    && chown -R appuser:appuser /app /data /ms-playwright
+    && chown -R appuser:appuser /app /data
+
+RUN if [ "$PLAYWRIGHT_INSTALL" = "true" ]; then \
+        chown -R appuser:appuser /ms-playwright; \
+    fi
 
 USER appuser
