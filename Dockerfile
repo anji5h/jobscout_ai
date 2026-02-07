@@ -17,8 +17,9 @@ RUN python -m venv $VIRTUAL_ENV \
     && pip install --upgrade pip \
     && pip install -r requirements.txt
 
-# Install Playwright only if the environment variable PLAYWRIGHT_INSTALL is set
-RUN if [ "$PLAYWRIGHT_INSTALL" = "true" ]; then \
+# Install Playwright only if the ARG PLAYWRIGHT_INSTALL is set
+ARG SCRAPER_MODE=false
+RUN if [ "$SCRAPER_MODE" = "true" ]; then \
         python -m playwright install chromium --with-deps --only-shell; \
     fi
 
@@ -28,7 +29,7 @@ RUN useradd -m appuser \
     && mkdir -p /data \
     && chown -R appuser:appuser /app /data
 
-RUN if [ "$PLAYWRIGHT_INSTALL" = "true" ]; then \
+RUN if [ "$SCRAPER_MODE" = "true" ]; then \
         chown -R appuser:appuser /ms-playwright; \
     fi
 

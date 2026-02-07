@@ -34,7 +34,10 @@ services:
       - jobscout_network
 
   scraper:
-    build: .
+    build:
+      context: .
+      args:
+        - SCRAPER_MODE=true
     restart: unless-stopped
     command: ["celery", "-A", "app.celery", "worker", "--beat", "--loglevel=info"]
     depends_on:
@@ -43,8 +46,6 @@ services:
       redis:
         condition: service_healthy
     env_file: .env
-    environment:
-      - PLAYWRIGHT_INSTALL=true
     volumes:
       - scraper_data:/data
     networks:
