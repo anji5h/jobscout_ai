@@ -59,7 +59,7 @@ async def upload_cv(file: UploadFile = File(...)):
             detail="File type not allowed. Only PDF files are allowed.",
         )
 
-    file_path = Path(f"{settings.cv_file_path}/resume.pdf")
+    file_path = Path(settings.cv_file_path)
 
     try:
         if file_path.exists():
@@ -119,7 +119,7 @@ async def get_jobs(
 
         return {
             "status": "success",
-            "meta":{
+            "meta": {
                 "page": (skip // limit) + 1,
                 "page_size": limit,
                 "total_results": total_count,
