@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS base
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -11,26 +11,25 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y \
+    supervisor \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 
 RUN python -m venv $VIRTUAL_ENV \
     && pip install --upgrade pip \
-    && pip install -r requirements.txt
-
-# Install Playwright only if the ARG PLAYWRIGHT_INSTALL is set
-ARG SCRAPER_MODE=false
-RUN if [ "$SCRAPER_MODE" = "true" ]; then \
-        python -m playwright install chromium --with-deps --only-shell; \
-    fi
+    && pip install -r requirements.txt \
+    && python -m playwright install chromium --with-deps --only-shell
 
 COPY . .
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 RUN useradd -m appuser \
     && mkdir -p /data \
-    && chown -R appuser:appuser /app /data
-
-RUN if [ "$SCRAPER_MODE" = "true" ]; then \
-        chown -R appuser:appuser /ms-playwright; \
-    fi
+    && chown -R appuser:appuser /app /data /ms-playwright /etc/supervisor
 
 USER appuser
+
+CMD ["supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     linkedin_username: str = Field(..., env="LINKEDIN_USERNAME")
     linkedin_password: str = Field(..., env="LINKEDIN_PASSWORD")
     postgres_user: str = Field("postgres", env="POSTGRES_USER")
+    hf_token: str = Field(..., env="HF_TOKEN")
+    hf_model: str = Field(..., env="HF_MODEL")
     postgres_password: str = Field("postgres", env="POSTGRES_PASSWORD")
     postgres_host: str = Field("postgres", env="POSTGRES_HOST")
     postgres_port: int = Field(5432, env="POSTGRES_PORT")
@@ -25,6 +27,7 @@ class Settings(BaseSettings):
     )
     session_file_path: str = Field("/data/session.json", env="SESSION_FILE_PATH")
     cv_file_path: str = Field("/data/resume.pdf", env="CV_FILE_PATH")
+    prompt_file_path: str = Field("/data/prompt.txt", env="PROMPT_FILE_PATH")
 
     class Config:
         case_sensitive = False

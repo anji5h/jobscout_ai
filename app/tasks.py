@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 from playwright.async_api import async_playwright
 
 from app.celery import app
-from app.service import auth_provider, scraper, db_manager
+from app.service import auth_provider, scraper, db_manager, job_processor
+from database.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +21,14 @@ def scrape_linkedin_jobs_task(self):
 
         jobs = asyncio.run(_scrape_and_persist())
 
-        logger.info(f"Task completed successfully.")
+        logger.info(f"Job scraping task completed successfully.")
         return {
             "status": "success",
-            "jobs_processed": len(jobs),
+            "jobs_scraped": len(jobs),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     except Exception as exc:
-        logger.error(f"Task failed with error: {exc}")
+        logger.error(f"Job scraping task failed with error: {exc}")
         raise self.retry(exc=exc, countdown=60 * (2**self.request.retries))
 
 
@@ -40,9 +41,31 @@ async def _scrape_and_persist():
             page = await context.new_page()
             jobs = await scraper.scrape_jobs(page)
             db_manager.save_jobs(jobs)
+            await page.close()
             await context.close()
             await browser.close()
             return jobs
     except Exception as e:
         logger.error(f"Error during scraping and persistence: {e}")
         raise
+
+
+@app.task(bind=True, max_retries=3)
+def process_jobs(self):
+    """
+    Task to process scraped jobs and update match scores.
+    """
+    logger.info(f"Starting job processing task (attempt {self.request.retries + 1})")
+    try:
+        _, jobs = db_manager.get_jobs(filter=[Job.match_score == None], limit=2)
+        processed_jobs = job_processor.process_job(jobs)
+        db_manager.save_jobs(processed_jobs)
+        logger.info(f"Job processing task completed successfully.")
+        return {
+            "status": "success",
+            "jobs_processed": len(processed_jobs),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:
+        logger.error(f"Job processing task failed with error: {exc}")
+        raise self.retry(exc=exc, countdown=60 * (2**self.request.retries))

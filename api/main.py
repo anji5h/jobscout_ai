@@ -2,9 +2,18 @@ import shutil
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
+from typing import List, Optional
+
+from fastapi import (
+    FastAPI,
+    UploadFile,
+    File,
+    HTTPException,
+    Query,
+    Request,
+)
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 
 from app.config import settings
 from app.service import db_manager
@@ -22,22 +31,21 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Global exception handler for unhandled errors."""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception", extra={"path": request.url.path})
     return JSONResponse(
         status_code=500,
         content={"status": "error", "detail": "Internal server error"},
     )
 
 
-@app.get("/health")
+@app.get("/health", tags=["system"])
 async def health_check():
-    """Health check endpoint."""
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -45,70 +53,78 @@ async def health_check():
     }
 
 
-@app.post("/upload-cv")
-async def upload_cv(file: UploadFile = File(...)):
-    """
-    Upload a CV file and save it with a fixed name.
-    Existing file will be replaced.
-    """
+async def save_uploaded_file(
+    file: UploadFile,
+    allowed_ext: str,
+    destination: Path,
+    label: str,
+):
     file_ext = Path(file.filename).suffix.lower()
 
-    if file_ext != ".pdf":
+    if file_ext != allowed_ext:
         raise HTTPException(
             status_code=400,
-            detail="File type not allowed. Only PDF files are allowed.",
+            detail=f"Only {allowed_ext.upper()} files are allowed.",
         )
 
-    file_path = Path(settings.cv_file_path)
-
     try:
-        if file_path.exists():
-            file_path.unlink()
+        if destination.exists():
+            destination.unlink()
 
-        with file_path.open("wb") as buffer:
+        with destination.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        logger.info(f"CV uploaded to {file_path}")
+        logger.info("%s uploaded successfully", label)
 
-        return {
-            "status": "success",
-            "message": f"CV uploaded successfully",
-        }
-    except Exception as e:
-        logger.error(f"Error saving CV: {e}")
-        raise HTTPException(status_code=500, detail="Failed to upload CV")
+        return {"status": "success", "message": f"{label} uploaded successfully"}
+
+    except Exception:
+        logger.exception("Failed to upload %s", label)
+        raise HTTPException(status_code=500, detail=f"Failed to upload {label}")
+
     finally:
         await file.close()
 
 
-@app.get("/jobs")
+@app.post("/upload-cv", tags=["files"])
+async def upload_cv(file: UploadFile = File(...)):
+    return await save_uploaded_file(
+        file=file,
+        allowed_ext=".pdf",
+        destination=Path(settings.cv_file_path),
+        label="CV",
+    )
+
+
+@app.post("/upload-prompt", tags=["files"])
+async def upload_prompt(file: UploadFile = File(...)):
+    return await save_uploaded_file(
+        file=file,
+        allowed_ext=".txt",
+        destination=Path(settings.prompt_file_path),
+        label="Prompt",
+    )
+
+
+@app.get("/jobs", tags=["jobs"])
 async def get_jobs(
-    limit: int = Query(25, description="Number of jobs to return"),
-    skip: int = Query(0, description="Number of jobs to skip for pagination"),
-    match_score: bool = Query(
-        True, description="Filter jobs with non-null match_score"
-    ),
-    title: str = Query(None, description="Filter jobs by title"),
-    location: str = Query(None, description="Filter jobs by location"),
+    limit: int = Query(25, ge=1, le=100),
+    skip: int = Query(0, ge=0),
+    match_score: bool = Query(True),
+    title: Optional[str] = Query(None),
+    location: Optional[str] = Query(None),
 ):
-    """
-    Retrieve jobs with match scores (non-null match_score values).
-
-    Args:
-        limit: Number of jobs to return (default 25)
-        skip: Number of jobs to skip for pagination (default 0)
-
-    Returns:
-        List of jobs sorted by match_score descending and then by scraped date descending
-    """
     try:
-        filters = []
+        filters: List = []
+
         if match_score:
-            filters.append(Job.match_score != None)
+            filters.append(Job.match_score.isnot(None))
+
         if title:
-            filters.append(Job.title.like(f"%{title}%"))
+            filters.append(Job.title.ilike(f"%{title}%"))
+
         if location:
-            filters.append(Job.location.like(f"%{location}%"))
+            filters.append(Job.location.ilike(f"%{location}%"))
 
         total_count, jobs = db_manager.get_jobs(
             filter=filters,
@@ -127,6 +143,7 @@ async def get_jobs(
             },
             "data": jobs,
         }
-    except Exception as e:
-        logger.error(f"Error retrieving matched jobs: {e}")
+
+    except Exception:
+        logger.exception("Error retrieving jobs")
         raise HTTPException(status_code=500, detail="Failed to retrieve jobs")

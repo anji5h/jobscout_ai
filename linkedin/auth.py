@@ -79,17 +79,23 @@ class LinkedInAuthenticator:
         page: Page = await context.new_page()
         try:
             await page.goto(self.login_url, wait_until="commit", timeout=30000)
+
             await page.wait_for_selector(
                 "#username, input[name='session_key']", timeout=15000
             )
             await page.fill("#username, input[name='session_key']", self.email)
+
+            await page.wait_for_selector(
+                "#password, input[name='session_password']", timeout=15000
+            )
             await page.fill("#password, input[name='session_password']", self.password)
+
             await page.click(
                 "button[type=submit][data-litms-control-urn='login-submit']",
                 timeout=10000,
             )
             await page.wait_for_url(
-                re.compile(rf"^{re.escape(self.feed_url)}", re.IGNORECASE),
+                re.compile(rf"^{re.escape(self.feed_url)}"),
                 timeout=45000,
                 wait_until="domcontentloaded",
             )

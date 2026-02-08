@@ -24,11 +24,18 @@ app.conf.update(
 @app.on_after_configure.connect
 def trigger_startup_tasks(sender, **kwargs):
     sender.send_task("app.tasks.scrape_linkedin_jobs_task")
+    sender.send_task(
+        "app.tasks.process_jobs", countdown=300
+    )  # Delay to allow scraping to finish
 
 
 app.conf.beat_schedule = {
     "scrape-linkedin-jobs-hourly": {
         "task": "app.tasks.scrape_linkedin_jobs_task",
-        "schedule": crontab(minute="0", hour="8,14,20"),
+        "schedule": crontab(minute="0", hour="8,14,20"),  # Run at 8am, 2pm, and 8pm UTC
+    },
+    "process-jobs-hourly": {
+        "task": "app.tasks.process_jobs",
+        "schedule": crontab(minute="*/30"),  # Run every 30 minutes to process new jobs
     },
 }

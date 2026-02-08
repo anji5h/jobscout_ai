@@ -1,5 +1,7 @@
 from app.config import settings
+
 from database.session import DatabaseManager
+from linkedin.processor import JobProcessor
 from linkedin.scraper import LinkedInJobScraper
 from linkedin.auth import LinkedInAuthenticator
 
@@ -17,3 +19,10 @@ scraper = LinkedInJobScraper(
 )
 
 db_manager = DatabaseManager(database_url=settings.database_url)
+
+job_processor = JobProcessor(
+    hf_token=settings.hf_token,
+    hf_model=settings.hf_model,
+    cv_path=settings.cv_file_path,
+    prompt_path=settings.prompt_file_path,
+)
