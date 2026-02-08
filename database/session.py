@@ -45,9 +45,6 @@ class DatabaseManager:
                     query = query.order_by(order)
             query = query.offset(skip).limit(limit)
             jobs = query.all()
-            logger.info(
-                f"Retrieved {len(jobs)} jobs from the database (total matching: {total_count})"
-            )
             return total_count, jobs
         except Exception as e:
             logger.error(f"Error retrieving jobs: {e}")
@@ -73,6 +70,7 @@ class DatabaseManager:
                     "job_url": job.job_url,
                     "description": job.description,
                     "posted_date": job.posted_date,
+                    "match_score": job.match_score,
                 }
                 for job in jobs
             ]
@@ -88,6 +86,7 @@ class DatabaseManager:
                     "job_url": stmt.excluded.job_url,
                     "description": stmt.excluded.description,
                     "scraped_at": stmt.excluded.scraped_at,
+                    "match_score": stmt.excluded.match_score,
                 },
             )
             session.execute(stmt)

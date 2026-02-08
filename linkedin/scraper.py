@@ -130,6 +130,7 @@ class LinkedInJobScraper:
                 job_url=job_url,
                 description=description,
                 posted_date=posted_date,
+                match_score=None,
             )
 
         except PlaywrightTimeoutError as te:
